@@ -1,0 +1,38 @@
+/* VideoUploader.css */
+.video-uploader {
+  margin: 20px;
+}
+
+input[type="file"] {
+  margin-bottom: 10px;
+}
+
+button {
+  margin-top: 10px;
+}
+
+.pose-json {
+  text-align: left;
+  max-height: 300px;
+  overflow: auto;
+  background: #f6f6f6;
+  padding: 8px;
+  border-radius: 4px;
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+
+.video-uploader video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* overlay canvas inserted dynamically */
+.video-uploader .overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  /* width/height are set inline from JS to match displayed video size */
+}

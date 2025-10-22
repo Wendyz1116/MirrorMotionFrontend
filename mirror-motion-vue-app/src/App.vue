@@ -1,23 +1,18 @@
 <template>
   <div id="app">
-    <h1>Video Pose Landmark Extraction</h1>
-    <VideoUploader @video-uploaded="handleVideoUploaded" />
-    <PoseExtractor />
+    <UploadVideoPage @video-uploaded="handleVideoUploaded" />
     <PoseCanvas :poseData="poseData" />
   </div>
 </template>
 
 <script>
-import PoseExtractor from './components/PoseExtractor.vue';
-import VideoUploader from './components/VideoUploader.vue';
+import UploadVideoPage from './pages/UploadVideoPage.vue';
 // import PoseCanvas from './components/PoseCanvas.vue';
 
 export default {
   name: 'App',
   components: {
-    PoseExtractor,
-    VideoUploader
-    // PoseCanvas
+    UploadVideoPage
   },
   data() {
     return {

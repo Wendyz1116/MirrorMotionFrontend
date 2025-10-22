@@ -3,24 +3,33 @@
         <div ref="demos" class="demos invisible">
             <h2>MediaPipe Pose Extractor (Demo)</h2>
             <div ref="imageGrid" class="image-grid">
-                <div class="testImage detectOnClick">
+                <!-- <div class="testImage detectOnClick">
                     <img src="../../public/testPoseImgs/poseTest1.png" crossorigin="anonymous"
                         title="Click to simulate `extractPoses` for this image" />
                     <p>Test case: image with multiple poses</p>
+                </div> -->
+                <div class="testVideo detectOnClick">
+                    <video src="../../public/testVideos/testVideo1.mp4" crossorigin="anonymous" title="video"
+                        controls></video>
+                    <p>Test case: image with single pose</p>
+                    <!-- put <div class="detectOnClick"><img src="..." /></div> items here or render dynamically -->
                 </div>
-                <!-- put <div class="detectOnClick"><img src="..." /></div> items here or render dynamically -->
             </div>
-        </div>
 
-        <div class="controls">
-            <div ref="testResults" class="results-box">Results will appear here</div>
-            <div ref="extractedPosesList" class="extracted-list">No poses extracted yet.</div>
+            <div class="controls">
+                <button @click="extractAllLandmarks" class="btn">Extract All Landmarks</button>
+                <button @click="renderLandmarksOnVideo" class="btn">Render Landmarks</button>
+
+                <div ref="testResults" class="results-box">Results will appear here</div>
+                <div ref="extractedPosesList" class="extracted-list">No poses extracted yet.</div>
+            </div>
+
         </div>
     </div>
+
 </template>
 
 <script>
-console.log("PoseExtractor component loaded");
 import { ref, onMounted, reactive } from 'vue';
 import { FilesetResolver, PoseLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
 
@@ -32,7 +41,10 @@ export default {
         const extractedPosesList = ref(null);
         const imageGrid = ref(null);
         let poseLandmarker = null;
-        const extractedPoses = reactive(new Map());
+        const extractedLandmarks = reactive([]); // store array of frame results
+        let videoElement = null;
+        let canvas = null, ctx = null, drawingUtils = null;
+
         const keypoints = {
             NOSE: 0, LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
             LEFT_ELBOW: 13, RIGHT_ELBOW: 14, LEFT_WRIST: 15, RIGHT_WRIST: 16,
@@ -41,18 +53,12 @@ export default {
         };
 
         function logResult(type, label, data) {
-            let out = `[${type}] ${label}\n\n`;
-            if (type === 'EXTRACT' || type === 'RETRIEVE') {
-                if (!data || Object.keys(data).length === 0) out += 'No pose data found.\n\n';
-                else out += `${JSON.stringify(data, null, 2)}\n\n`;
-            } else if (typeof data === 'object') out += `${JSON.stringify(data, null, 2)}\n\n`;
-            else out += `${data}\n\n`;
+            let out = `[${type}] ${label}\n\n${typeof data === 'object' ? JSON.stringify(data, null, 2) : data}\n\n`;
             console.log(type, label, data);
             if (testResults.value) testResults.value.textContent = out + testResults.value.textContent;
         }
 
         async function createPoseLandmarker() {
-            logResult('STATUS', 'Loading PoseLandmarker...', 'Initializing MediaPipe tasks.');
             const vision = await FilesetResolver.forVisionTasks(
                 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm'
             );
@@ -61,117 +67,112 @@ export default {
                     modelAssetPath: '/models/pose_landmarker_lite.task',
                     delegate: 'GPU'
                 },
-                numPoses: 2
+                runningMode: "VIDEO",
             });
             demos.value?.classList.remove('invisible');
             logResult('STATUS', 'PoseLandmarker Loaded ✅', 'Ready to detect poses.');
-            attachImageClickHandlers();
         }
 
-        function attachImageClickHandlers() {
-            if (!imageGrid.value) return;
-            const containers = imageGrid.value.getElementsByClassName('detectOnClick');
-            for (let i = 0; i < containers.length; i++) {
-                const img = containers[i].querySelector('img');
-                if (img) img.addEventListener('click', () => handleClick(img));
-            }
-        }
-
-        function handleClick(image) {
-            if (!poseLandmarker) {
-                logResult('ERROR', 'PoseLandmarker not ready', 'Wait for initialization.');
+        // 🧩 Phase 1 — Extract all landmarks for each frame
+        async function extractAllLandmarks() {
+            const video = imageGrid.value.querySelector('video');
+            if (!video || !poseLandmarker) {
+                logResult('ERROR', 'Missing', 'No video or poseLandmarker found.');
                 return;
             }
-            logResult('INFO', 'Simulating extractPoses for image', image.src);
-            runDetection(image);
+
+            extractedLandmarks.length = 0; // clear previous results
+            videoElement = video;
+
+            logResult('STATUS', 'Extracting Landmarks...', 'Processing all frames.');
+
+            // Ensure video is loaded and ready
+            await video.play();
+            video.pause();
+
+            const frameInterval = 100; // ms between frames (~10 fps)
+            const totalFrames = Math.floor(video.duration * 1000 / frameInterval);
+
+            for (let i = 0; i < totalFrames; i++) {
+                video.currentTime = i * frameInterval / 1000;
+                await new Promise(r => video.onseeked = r);
+
+                const res = await poseLandmarker.detectForVideo(video, performance.now());
+                extractedLandmarks.push(res.landmarks?.[0] || null);
+            }
+
+            logResult('DONE', 'Extraction Complete ✅', `${extractedLandmarks.length} frames processed.`);
         }
 
-        function runDetection(image) {
-            const parent = image.parentNode;
-            const existing = parent.querySelector('canvas');
-            if (existing) existing.remove();
+        // 🎥 Phase 2 — Render previously extracted landmarks
+        async function renderLandmarksOnVideo() {
+            if (!videoElement || extractedLandmarks.length === 0) {
+                logResult('ERROR', 'No Data', 'Run extractAllLandmarks() first.');
+                return;
+            }
 
-            const canvas = document.createElement('canvas');
+            // Create or reset canvas overlay
+            if (canvas) canvas.remove();
+            canvas = document.createElement('canvas');
+            videoElement.parentNode.style.position = 'relative';
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
             canvas.style.position = 'absolute';
-            canvas.style.left = '0';
             canvas.style.top = '0';
+            canvas.style.left = '0';
             canvas.style.pointerEvents = 'none';
-            canvas.width = image.clientWidth;
-            canvas.height = image.clientHeight;
-            canvas.style.width = image.clientWidth + 'px';
-            canvas.style.height = image.clientHeight + 'px';
-            parent.style.position = 'relative';
-            parent.appendChild(canvas);
+            videoElement.parentNode.appendChild(canvas);
+            ctx = canvas.getContext('2d');
+            drawingUtils = new DrawingUtils(ctx);
 
-            const ctx = canvas.getContext('2d');
-            const drawingUtils = new DrawingUtils(ctx);
+            const frameInterval = 100; // must match extraction interval (ms)
+            const totalFrames = extractedLandmarks.length;
+            let lastFrameIndex = -1;
 
-            // detect accepts Image|Video|HTMLCanvasElement, using Promise API here:
-            const result = poseLandmarker.detect(image);
-            // detect returns object with landmarks array
-            Promise.resolve(result).then((res) => {
-                const poseID = `pose-${crypto.randomUUID().slice(0, 8)}`;
-                const firstPose = res.landmarks?.[0];
-                if (!firstPose) {
-                    logResult('EXTRACT', `Pose ID: ${poseID}`, 'No landmarks detected.');
-                    updateExtractedPosesUI();
-                    return;
+            // 🔥 Sync overlay drawing with video playback
+            function drawFrame() {
+                if (videoElement.paused || videoElement.ended) return;
+
+                // Compute which frame corresponds to the current time
+                const frameIndex = Math.floor(videoElement.currentTime * 1000 / frameInterval);
+
+                if (frameIndex !== lastFrameIndex && frameIndex < totalFrames) {
+                    const lm = extractedLandmarks[frameIndex];
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    if (lm) {
+                        drawingUtils.drawLandmarks(lm, { radius: 2, color: 'white' });
+                        drawingUtils.drawConnectors(
+                            lm,
+                            PoseLandmarker.POSE_CONNECTIONS,
+                            { color: 'white', lineWidth: 2 }
+                        );
+                    }
+                    lastFrameIndex = frameIndex;
                 }
 
-                const simplifiedPose = {};
-                for (const [name, idx] of Object.entries(keypoints)) {
-                    const p = firstPose[idx];
-                    simplifiedPose[name] = p ? { x: p.x, y: p.y, z: p.z } : null;
-                }
-
-                extractedPoses.set(poseID, simplifiedPose);
-                logResult('EXTRACT', `Pose ID: ${poseID}`, simplifiedPose);
-                updateExtractedPosesUI();
-
-                for (const lm of res.landmarks || []) {
-                    drawingUtils.drawLandmarks(lm, { radius: 1, color: 'white' });
-                    drawingUtils.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: 'white', lineWidth: 2 });
-                }
-            }).catch(err => logResult('ERROR', 'Detection error', err));
-        }
-
-        function updateExtractedPosesUI() {
-            if (!extractedPosesList.value) return;
-            extractedPosesList.value.innerHTML = '';
-            if (extractedPoses.size === 0) {
-                extractedPosesList.value.textContent = 'No poses extracted yet.';
-                return;
+                requestAnimationFrame(drawFrame);
             }
-            extractedPoses.forEach((_, poseID) => {
-                const div = document.createElement('div');
-                div.className = 'extracted-pose-item';
-                const idSpan = document.createElement('span');
-                idSpan.textContent = `Pose ID: ${poseID}`;
-                const btn = document.createElement('button');
-                btn.textContent = 'Get Pose Data';
-                btn.onclick = () => getPoseDataAction(poseID);
-                div.appendChild(idSpan);
-                div.appendChild(btn);
-                extractedPosesList.value.appendChild(div);
-            });
+
+            // Start playback and synchronized rendering
+            videoElement.currentTime = 0;
+            await videoElement.play();
+            drawFrame();
         }
 
-        function getPoseDataAction(poseID) {
-            const poseData = extractedPoses.get(poseID);
-            if (poseData) logResult('RETRIEVE', `Retrieving Pose ID: ${poseID}`, poseData);
-            else logResult('ERROR', `Retrieving Pose ID: ${poseID}`, 'Pose data not found.');
-        }
+
 
         onMounted(async () => {
             await createPoseLandmarker();
-            updateExtractedPosesUI();
         });
 
-        return { demos, testResults, extractedPosesList, imageGrid };
+        return {
+            demos, testResults, extractedPosesList, imageGrid,
+            extractAllLandmarks, renderLandmarksOnVideo
+        };
     }
 };
 </script>
-
 <style scoped>
 .demos.invisible {
     display: none;
@@ -202,5 +203,19 @@ export default {
 .extracted-list {
     margin-top: 8px;
     text-align: left;
+}
+
+.btn {
+    background-color: #333;
+    color: white;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.btn:hover {
+    background-color: #555;
 }
 </style>
