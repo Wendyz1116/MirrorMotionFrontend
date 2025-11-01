@@ -1,15 +1,33 @@
-export const uploadVideo = async (owner, videoType, file) => {
-  console.log("uploadVideo called with:", { owner, videoType, file });
+import { computeAudioOffset } from "@/services/compareVideosService";
+import { createBlobUrlFromRemote } from "./poseBreakdownService";
+
+export const uploadVideo = async (
+  owner,
+  videoType,
+  file,
+  videoName,
+  referenceVideoId
+) => {
+  console.log("uploadVideo called with:", {
+    owner,
+    videoType,
+    file,
+    videoName,
+    referenceVideoId,
+  });
   const formData = new FormData();
   formData.append("owner", owner);
   formData.append("videoType", videoType);
   formData.append("file", file);
+  formData.append("videoName", videoName);
+  formData.append("referenceVideoId", referenceVideoId);
+
+  console.log("FormData prepared:");
 
   for (const [key, value] of formData.entries()) {
     console.log(key, value);
   }
 
-  console.log("FormData prepared:", formData);
   const response = await fetch("http://localhost:8000/api/ManageVideo/upload", {
     method: "POST",
     body: formData,
@@ -30,11 +48,11 @@ export const retrieveVideo = async (videoId, owner) => {
   formData.append("video", videoId);
   formData.append("caller", owner);
 
+  console.log("FormData prepared:");
   for (const [key, value] of formData.entries()) {
     console.log(key, value);
   }
 
-  console.log("FormData prepared:", formData);
   const response = await fetch(
     "http://localhost:8000/api/ManageVideo/retrieve",
     {
@@ -128,61 +146,196 @@ export const addPosesToVideo = async (
         `Failed to add poses to video (status: ${response.status})`
       );
     }
-
-    const data = await response.json();
-    return data;
   } catch (error) {
     console.error("Error adding poses to video:", error);
     throw error;
   }
 };
 
-export const generateFeedback = async (
-  referenceVideoId,
-  practiceVideoId,
-  referencePoseData,
-  practicePoseData
+export const setMatchingFrames = async (
+  videoId,
+  referenceStartFrame,
+  referenceEndFrame,
+  practiceStartFrame,
+  practiceEndFrame,
+  caller
 ) => {
-  try {
-    console.log("generateFeedback called with:", {
-      referenceVideoId,
-      practiceVideoId,
-      referencePoseDataSample: referencePoseData[0],
-      practicePoseDataSample: practicePoseData[0],
-    });
-    const formData = new FormData();
-    formData.append("referenceVideo", referenceVideoId);
-    formData.append("practiceVideo", practiceVideoId);
-    formData.append("referencePoseData", JSON.stringify(referencePoseData));
-    formData.append("practicePoseData", JSON.stringify(practicePoseData));
+  console.log("setMatchingFrames called with:", {
+    videoId,
+    referenceStartFrame,
+    referenceEndFrame,
+    practiceStartFrame,
+    practiceEndFrame,
+    caller,
+  });
+  const formData = new FormData();
+  formData.append("video", videoId);
+  formData.append("referenceStartFrame", referenceStartFrame);
+  formData.append("referenceEndFrame", referenceEndFrame);
+  formData.append("practiceStartFrame", practiceStartFrame);
+  formData.append("practiceEndFrame", practiceEndFrame);
+  formData.append("caller", caller);
 
-    // const body = {
-    //   referenceVideo: referenceVideoId,
-    //   practiceVideo: practiceVideoId,
-    //   referencePoseData: referencePoseData[0], // must have a key
-    //   practicePoseData: practicePoseData[0], // must have a key
-    // };
-
-    const response = await fetch("http://localhost:8000/api/Feedback/analyze", {
+  const response = await fetch(
+    "http://localhost:8000/api/ManageVideo/setMatchingFrames",
+    {
       method: "POST",
       body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to set matching frames: ${response.statusText}`);
+  }
+};
+
+export const storeFeedback = async (videoId, feedbackId, caller) => {
+  const formData = new FormData();
+  formData.append("video", videoId);
+  formData.append("feedbackId", feedbackId);
+  formData.append("caller", caller);
+
+  const response = await fetch(
+    "http://localhost:8000/api/ManageVideo/storeFeedback",
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to store feedback: ${response.statusText}`);
+  }
+};
+
+// Query functions
+export const getOwnedVideos = async (owner) => {
+  console.log("getOwnedVideos called with:", { owner });
+  const formData = new FormData();
+  formData.append("owner", owner);
+
+  console.log("FormData prepared:");
+  for (const [key, value] of formData.entries()) {
+    console.log(key, value);
+  }
+
+  const response = await fetch(
+    "http://localhost:8000/api/ManageVideo/getOwnedVideos",
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to retrieve video: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log("retrieve response:", data);
+  return data;
+};
+
+export const getPracticeVideos = async (referenceVideoId) => {
+  console.log("getPracticeVideos called with:", { referenceVideoId });
+  const formData = new FormData();
+  formData.append("referenceVideoId", referenceVideoId);
+
+  console.log("FormData prepared:");
+  for (const [key, value] of formData.entries()) {
+    console.log(key, value);
+  }
+
+  const response = await fetch(
+    "http://localhost:8000/api/ManageVideo/getPracticeVideos",
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to retrieve video: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log("retrieve response:", data);
+  return data;
+};
+
+export const getAllReferenceVideos = async (caller) => {
+  console.log("getAllReferenceVideos called with:", { caller });
+  const formData = new FormData();
+  formData.append("caller", caller);
+
+  for (const [key, value] of formData.entries()) {
+    console.log(key, value);
+  }
+
+  const response = await fetch(
+    "http://localhost:8000/api/ManageVideo/getAllReferenceVideos",
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to retrieve video: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log("retrieve response:", data);
+  return data;
+};
+
+/**
+ * Action: Given a reference video and a practice video, return the matching start and end frames.
+ * @param referenceVideo - The reference video element.
+ * @param practiceVideo - The practice video element.
+ * @returns A MatchingFrames object containing the matching start and end frames.
+ */
+export const getMatchingFrames = async (referenceVideo, practiceVideo) => {
+  try {
+    console.log("getMatchingFrames called with:", {
+      referenceVideo,
+      practiceVideo,
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to generate feedback: ${response.statusText}`);
-    }
+    const referenceVideoUrl = await createBlobUrlFromRemote(
+      referenceVideo.videoId
+    );
+    const practiceVideoUrl = await createBlobUrlFromRemote(
+      practiceVideo.videoId
+    );
 
-    const data = await response.json();
+    // Compute the audio offset and
+    const audioOffsetInfo2 = await computeAudioOffset(
+      referenceVideoUrl,
+      practiceVideoUrl
+    );
 
-    if (data.error) {
-      console.error("Feedback generation failed:", data.error);
-      throw new Error(data.error);
-    }
+    const {
+      referenceStartFrame,
+      referenceEndFrame,
+      practiceStartFrame,
+      practiceEndFrame,
+    } = audioOffsetInfo2;
 
-    console.log("Feedback generated:", data.feedback);
-    return data;
+    console.log("Matching frames:", {
+      referenceStartFrame,
+      referenceEndFrame,
+      practiceStartFrame,
+      practiceEndFrame,
+    });
+
+    return {
+      referenceStartFrame,
+      referenceEndFrame,
+      practiceStartFrame,
+      practiceEndFrame,
+    };
   } catch (error) {
-    console.error("Error in generateFeedback service:", error);
-    throw error;
+    console.error("Error getting matching frames:", error);
   }
 };

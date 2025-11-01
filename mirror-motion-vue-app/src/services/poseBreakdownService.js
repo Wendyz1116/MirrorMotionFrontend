@@ -2,7 +2,7 @@ import { FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 
 let poseLandmarker = null;
 
-const KEYPOINTS = {
+export const KEY_LANDMARKS = {
   NOSE: 0,
   LEFT_SHOULDER: 11,
   RIGHT_SHOULDER: 12,
@@ -21,10 +21,11 @@ const KEYPOINTS = {
 function simplifyPose(landmarks) {
   if (!landmarks) return null;
   const out = {};
-  for (const [name, idx] of Object.entries(KEYPOINTS)) {
+  for (const [name, idx] of Object.entries(KEY_LANDMARKS)) {
     const p = landmarks[idx];
-    out[name] = p ? { x: p.x, y: p.y, z: p.z } : null;
+    out[idx] = p ? { x: p.x, y: p.y, z: p.z } : null;
   }
+  // console.log("simplified pose:", out);
   return out;
 }
 
@@ -45,194 +46,88 @@ async function initPoseLandmarker() {
 }
 
 /**
- * Fetch a remote video URL and return a local blob: URL (caller should revoke when done).
+ * Fetch a remote video URL and return a local blob URL.
+ * Caller should revoke the URL when done.
  */
-export async function createBlobUrlFromRemote(url) {
-  const resp = await fetch(url, { mode: "cors" });
+export async function createBlobUrlFromRemote(currUrl) {
+  const remoteUrl = `http://localhost:8000/api/ManageVideo/${currUrl}`;
+  const resp = await fetch(remoteUrl, { mode: "cors" });
   if (!resp.ok) throw new Error(`Failed to fetch video (${resp.status})`);
   const blob = await resp.blob();
+  // console.log("created blob url:", URL.createObjectURL(blob));
   return URL.createObjectURL(blob);
 }
 
 /**
- * Extract landmarks from an HTMLVideoElement by seeking through frames.
- * Returns array of simplified pose objects (one per frame, null if none).
- */
-export async function extractLandmarksFromVideoElement(
-  videoEl,
-  frameIntervalMs = 100,
-  maxFrames = Infinity
-) {
-  await initPoseLandmarker();
-
-  console.log("extractLandmarksFromVideoElement called");
-  // ensure metadata
-  if (videoEl.readyState < 1) {
-    await new Promise((resolve) => {
-      const onMeta = () => {
-        videoEl.removeEventListener("loadedmetadata", onMeta);
-        resolve();
-      };
-      videoEl.addEventListener("loadedmetadata", onMeta);
-    });
-  }
-
-  const durationMs = isFinite(videoEl.duration) ? videoEl.duration * 1000 : 0;
-  const totalFrames = Math.min(
-    Math.max(1, Math.floor(durationMs / frameIntervalMs)),
-    maxFrames
-  );
-
-  const results = [];
-  // note: using seek+seeked to sample frames reliably
-  for (let i = 0; i < totalFrames; i++) {
-    videoEl.currentTime = (i * frameIntervalMs) / 1000;
-    await new Promise((resolve) => {
-      const onSeeked = () => {
-        videoEl.removeEventListener("seeked", onSeeked);
-        resolve();
-      };
-      videoEl.addEventListener("seeked", onSeeked);
-    });
-
-    const res = await poseLandmarker.detectForVideo(videoEl, performance.now());
-    // keep the simplified version for compatibility
-    results.push(simplifyPose(res.landmarks?.[0] ?? null));
-  }
-
-  return results;
-}
-
-/**
- * Extract raw landmark arrays (one landmarks array per frame or null).
- * This is suitable for drawing with DrawingUtils (expects array-of-points).
+ * Extract landmarks from a video element, sampling at specified intervals.
+ * @param {HTMLVideoElement} video - Video element to process
+ * @param {number} frameIntervalMs - Milliseconds between frames to sample
+ * @param {number} startMs - Start time in milliseconds
+ * @param {number} endMs - End time in milliseconds
+ * @returns {Promise<Array>} Array of landmark arrays, one per sampled frame
  */
 export async function extractRawLandmarksFromVideoElement(
-  videoEl,
+  video,
   frameIntervalMs = 100,
-  maxFrames = Infinity,
-  startTimeMs = 0,
-  syncLenMs = null // only used if provided
+  startMs = 0,
+  endMs = Infinity
 ) {
   await initPoseLandmarker();
+  if (!poseLandmarker) throw new Error("Failed to initialize pose landmarker");
 
-  if (videoEl.readyState < 1) {
+  const frames = [];
+  let currentMs = startMs;
+  endMs = Math.min(endMs, video.duration * 1000);
+
+  while (currentMs <= endMs) {
+    // Seek to current time
+    video.currentTime = currentMs / 1000;
+
+    // Wait for frame to be ready
     await new Promise((resolve) => {
-      const onMeta = () => {
-        videoEl.removeEventListener("loadedmetadata", onMeta);
+      const onSeek = () => {
+        video.removeEventListener("seeked", onSeek);
         resolve();
       };
-      videoEl.addEventListener("loadedmetadata", onMeta);
-    });
-  }
-
-  const durationMs = isFinite(videoEl.duration) ? videoEl.duration * 1000 : 0;
-  const usableDurationMs = Math.max(0, durationMs - startTimeMs);
-
-  let totalFrames = Math.min(
-    Math.max(1, Math.floor(durationMs / frameIntervalMs)),
-    maxFrames
-  );
-
-  if (startTimeMs > 0) {
-    const altFrames = Math.min(
-      Math.max(0, Math.floor(usableDurationMs / frameIntervalMs)),
-      maxFrames
-    );
-    if (altFrames === 0) return [];
-    totalFrames = altFrames;
-  }
-
-  // If syncLenMs exists, adjust totalFrames accordingly
-  if (syncLenMs != null) {
-    const syncedFrames = Math.min(
-      Math.floor(syncLenMs / frameIntervalMs),
-      totalFrames
-    );
-    if (syncedFrames === 0) return [];
-    totalFrames = syncedFrames;
-  }
-
-  const results = [];
-  for (let i = 0; i < totalFrames; i++) {
-    videoEl.currentTime = (startTimeMs + i * frameIntervalMs) / 1000;
-    await new Promise((resolve) => {
-      const onSeeked = () => {
-        videoEl.removeEventListener("seeked", onSeeked);
-        resolve();
-      };
-      videoEl.addEventListener("seeked", onSeeked);
+      video.addEventListener("seeked", onSeek);
     });
 
-    const res = await poseLandmarker.detectForVideo(videoEl, performance.now());
-    results.push(res.landmarks?.[0] ?? null);
-  }
-
-  return results;
-}
-
-/**
- * Extract landmarks from a video URL (creates a hidden video element).
- * This version fetches the remote URL as a blob first to avoid cross-origin WebGL errors.
- */
-export async function extractLandmarksFromVideoUrl(
-  url,
-  frameIntervalMs = 100,
-  maxFrames = Infinity
-) {
-  // fetch remote and create local blob URL so video is same-origin for WebGL
-  const blobUrl = await createBlobUrlFromRemote(url);
-
-  const video = document.createElement("video");
-  video.crossOrigin = "anonymous";
-  video.muted = true;
-  video.playsInline = true;
-  video.src = blobUrl;
-
-  video.style.position = "fixed";
-  video.style.left = "-9999px";
-  document.body.appendChild(video);
-
-  try {
-    await new Promise((resolve, reject) => {
-      const onMeta = () => {
-        video.removeEventListener("loadedmetadata", onMeta);
-        resolve();
-      };
-      const onErr = (e) => {
-        video.removeEventListener("error", onErr);
-        reject(e);
-      };
-      video.addEventListener("loadedmetadata", onMeta);
-      video.addEventListener("error", onErr);
-    });
-
-    const frames = await extractLandmarksFromVideoElement(
+    // Detect poses in current frame
+    const result = await poseLandmarker.detectForVideo(
       video,
-      frameIntervalMs,
-      maxFrames
+      performance.now()
     );
-    return frames;
-  } finally {
-    video.remove();
-    URL.revokeObjectURL(blobUrl);
+    // keep the simplified version for compatibility
+    frames.push(simplifyPose(result.landmarks?.[0] ?? null));
+    currentMs += frameIntervalMs;
   }
+
+  return frames;
 }
 
 /**
- * NEW: Extract raw landmarks from a remote URL (creates hidden video and returns raw per-frame landmarks).
+ * Extract raw landmarks from a remote URL (creates hidden video and returns raw per-frame landmarks).
  */
+
 export async function extractRawLandmarksFromVideoUrl(
   url,
   frameIntervalMs = 100,
-  maxFrames = Infinity
+  startFrame = 0,
+  endFrame = Infinity
 ) {
-  const blobUrl = await createBlobUrlFromRemote(url);
+  console.log("extractRawLandmarksFromVideoUrl called with:", {
+    url,
+    frameIntervalMs,
+    startFrame,
+    endFrame,
+  });
 
+  const blobUrl = await createBlobUrlFromRemote(url);
   const video = document.createElement("video");
   video.crossOrigin = "anonymous";
   video.muted = true;
   video.playsInline = true;
+  video.preload = "auto"; // Force preload
   video.src = blobUrl;
 
   video.style.position = "fixed";
@@ -240,26 +135,67 @@ export async function extractRawLandmarksFromVideoUrl(
   document.body.appendChild(video);
 
   try {
+    // Wait for BOTH metadata AND enough data to play
     await new Promise((resolve, reject) => {
-      const onMeta = () => {
-        video.removeEventListener("loadedmetadata", onMeta);
-        resolve();
+      const onReady = () => {
+        if (video.readyState >= 2) {
+          // HAVE_CURRENT_DATA or better
+          cleanup();
+          resolve();
+        }
       };
       const onErr = (e) => {
-        video.removeEventListener("error", onErr);
-        reject(e);
+        cleanup();
+        reject(new Error(`Failed to load video: ${e.message}`));
       };
-      video.addEventListener("loadedmetadata", onMeta);
+      const cleanup = () => {
+        video.removeEventListener("loadeddata", onReady);
+        video.removeEventListener("canplay", onReady);
+        video.removeEventListener("error", onErr);
+      };
+
+      video.addEventListener("loadeddata", onReady);
+      video.addEventListener("canplay", onReady);
       video.addEventListener("error", onErr);
+
+      // Start loading
+      video.load();
     });
 
+    // Now we can safely access duration
+    const startMs = startFrame * frameIntervalMs;
+    console.log(
+      "endFrame before adjustment:",
+      endFrame,
+      "video.duration (ms):",
+      video.duration,
+      video
+    );
+    const endMs = Math.min(
+      endFrame * frameIntervalMs,
+      Math.floor(video.duration * 1000)
+    );
+
+    // Try to start playback to ensure decoder is active
+    try {
+      await video.play();
+    } catch (e) {
+      console.warn("Autoplay blocked, proceeding anyway:", e);
+    }
+
+    // Extract landmarks
     const frames = await extractRawLandmarksFromVideoElement(
       video,
       frameIntervalMs,
-      maxFrames
+      startMs,
+      endMs
     );
+
     return frames;
   } finally {
+    try {
+      video.pause();
+    } catch (e) {}
     video.remove();
     URL.revokeObjectURL(blobUrl);
   }
