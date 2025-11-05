@@ -74,8 +74,7 @@ import { KEY_LANDMARKS } from '@/services/poseBreakdownService';
 export default {
     name: 'PracticeLibrary',
     props: {
-        referenceVideo: { type: Object, default: null },
-        owner: { type: String, default: 'testOwner' },
+        referenceVideo: { type: Object, default: null }
     },
     components: { GeneralFeedbackBox },
     data() {
@@ -96,9 +95,18 @@ export default {
             refCanvas: null,
             practCanvas: null,
             lastRefFrameIndex: -1,
-            lastPracFrameIndex: -1
-
+            lastPracFrameIndex: -1,
+            userId: null
         };
+    },
+    created() {
+        // Check for logged in user
+        const userId = localStorage.getItem('userId');
+        if (!userId) {
+            this.$router.push('/login');
+            return;
+        }
+        this.userId = userId;
     },
     computed: {
         refUrl() {
@@ -137,43 +145,72 @@ export default {
     },
     async mounted() {
         this.loading = true;
-        if (this.currentReferenceVideo) return;
 
-        // Try route query
-        const refVideoId = this.$route?.query?.refId;
-        if (refVideoId) {
-            // Get reference video
-            const refVideo = await retrieveVideo(refVideoId, this.owner);
-            this.currentReferenceVideo = refVideo;
-            this.refBlobUrl = await createBlobUrlFromRemote(refVideo.videoId);
-
-            this._refInitialized = true
-            await this.loadPracticeVideos();
+        // Check authentication
+        if (!this.userId) {
+            this.$router.push('/login');
             return;
         }
 
+        if (this.currentReferenceVideo) return;
+
+        try {
+            // Try route query
+            const refVideoId = this.$route?.query?.refId;
+            if (refVideoId) {
+                // Get reference video with user ID
+                const refVideo = await retrieveVideo(refVideoId, this.userId);
+                this.currentReferenceVideo = refVideo;
+                this.refBlobUrl = await createBlobUrlFromRemote(refVideo.videoId);
+
+                this._refInitialized = true;
+                await this.loadPracticeVideos();
+            }
+        } catch (error) {
+            if (error.message === 'Unauthorized') {
+                this.$router.push('/login');
+            } else {
+                this.error = error.message;
+            }
+        } finally {
+            this.loading = false;
+        }
     },
     methods: {
         async loadPracticeVideos() {
+            if (!this.userId) return;
+
             this.loading = true;
             try {
-                this.practiceVideos = await getPracticeVideos(this.currentReferenceVideo.videoId);
+                // Pass userId instead of owner
+                this.practiceVideos = await getPracticeVideos(
+                    this.currentReferenceVideo.videoId,
+                    this.userId
+                );
 
                 if (this.practiceVideos.length > 0) {
                     // Default to the first practice video
                     this.selectedPracticeIdx = 0;
+
+                    // Clear existing blob URLs
+                    this.practiceVideoBlobUrls = [];
+
                     for (const practiceVideo of this.practiceVideos) {
                         const blobUrl = await createBlobUrlFromRemote(practiceVideo._id);
                         this.practiceVideoBlobUrls.push(blobUrl);
                     }
                 }
             } catch (error) {
-                console.error("Failed to load practice videos:", error);
+                if (error.message === 'Unauthorized') {
+                    this.$router.push('/login');
+                } else {
+                    console.error("Failed to load practice videos:", error);
+                }
             } finally {
                 this.loading = false;
             }
         },
-
+        
         onPracticeChange() {
             console.log("Selected index:", this.selectedPracticeIdx);
 
@@ -526,6 +563,7 @@ h3,
 #practiceSelect:focus {
     border: 1px solid #3abdf8;
 }
+
 .form-group {
     display: flex;
     justify-content: center;

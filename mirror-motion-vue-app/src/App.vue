@@ -1,23 +1,33 @@
 <template>
   <div id="app">
-    <!-- Header with title and navigation buttons -->
     <header class="app-header">
-      <div>
-        <router-link to="/videoLibrary" class="title-link">
-          <h1>Mirror Motion</h1>
-        </router-link>
+      <div class="header-content">
+        <div class="left-section">
+          <router-link to="/videoLibrary" class="title-link">
+            <h1>Mirror Motion</h1>
+          </router-link>
 
-        <div class="nav-buttons">
-          <router-link to="/uploadVideo" class="nav-btn" :class="{ active: $route.path === '/uploadVideo' }">Upload
-            Video</router-link>
-          <router-link to="/videoLibrary" class="nav-btn" :class="{ active: $route.path === '/videoLibrary' }">Video
-            Library</router-link>
+          <div class="nav-buttons">
+            <router-link to="/uploadVideo" class="nav-btn" :class="{ active: $route.path === '/uploadVideo' }">
+              Upload Video
+            </router-link>
+            <router-link to="/videoLibrary" class="nav-btn" :class="{ active: $route.path === '/videoLibrary' }">
+              Video Library
+            </router-link>
+          </div>
+        </div>
+
+        <div class="right-section">
+          <router-link v-if="!isLoggedIn" to="/login" class="nav-btn">
+            Login
+          </router-link>
+          <button v-else @click="handleLogout" class="nav-btn">
+            Logout
+          </button>
         </div>
       </div>
-
     </header>
 
-    <!-- Main content -->
     <main class="app-main">
       <router-view />
     </main>
@@ -27,13 +37,36 @@
 <script>
 export default {
   name: "App",
+  data() {
+    return {
+      isLoggedIn: false
+    };
+  },
+  created() {
+    // Check if user is logged in
+    this.isLoggedIn = !!localStorage.getItem('userId');
+  },
+  methods: {
+    handleLogout() {
+      localStorage.removeItem('userId');
+      this.isLoggedIn = false;
+      this.$router.push('/login');
+    }
+  },
+  watch: {
+    '$route': {
+      handler() {
+        this.isLoggedIn = !!localStorage.getItem('userId');
+      },
+      immediate: true
+    }
+  }
 };
 </script>
 
 <style scoped>
 /* Main container */
 #app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
   color: #2c3e50;
   display: flex;
   flex-direction: column;
@@ -100,21 +133,34 @@ body {
   cursor: pointer;
 }
 
-/* Navigation buttons */
-.nav-buttons {
+.header-content {
+  width: 100%;
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.left-section {
+  display: flex;
+  align-items: center;
   gap: 12px;
+}
+
+.right-section {
+  margin-left: auto;
 }
 
 .nav-btn {
   padding: 8px 16px;
   border-radius: 8px;
-  /* background: ; */
   color: white;
   font-size: 15px;
   font-weight: bold;
   text-decoration: none;
   transition: background 0.2s ease;
+  border: none;
+  cursor: pointer;
+  background: transparent;
 }
 
 .nav-btn.active {

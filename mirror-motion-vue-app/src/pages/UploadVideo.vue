@@ -60,7 +60,18 @@ export default {
             statusMessage: "",
             referenceVideos: [], // holds fetched reference videos
             selectedReferenceVideoId: "", // selected reference for practice video
+            userId: null,
         };
+    },
+    created() {
+        // Check for logged in user when component is created
+        const userId = localStorage.getItem('userId');
+        if (!userId) {
+            // Redirect to login if no user is logged in
+            this.$router.push('/login');
+            return;
+        }
+        this.userId = userId;
     },
     methods: {
         onFileChange(event) {
@@ -74,24 +85,22 @@ export default {
         async onVideoTypeChange() {
             if (this.videoType === "practice") {
                 try {
-                    this.referenceVideos = await getAllReferenceVideos("testOwner");
+                    // Use actual user ID instead of hardcoded "testOwner"
+                    this.referenceVideos = await getAllReferenceVideos(this.userId);
                     console.log("Loaded reference videos:", this.referenceVideos);
                 } catch (err) {
                     console.error("Failed to load reference videos:", err);
                     this.referenceVideos = [];
                 }
             } else {
-                // Reset selection if video type is not practice
                 this.selectedReferenceVideoId = "";
                 this.referenceVideos = [];
             }
         },
 
-
         async uploadVideo() {
             if (!this.videoFile || !this.videoType || !this.videoName) return;
 
-            // Validate reference video selection if type is practice
             if (this.videoType === "practice" && !this.selectedReferenceVideoId) {
                 this.statusMessage = "Please select a reference video.";
                 return;
@@ -100,16 +109,26 @@ export default {
             try {
                 this.statusMessage = "Uploading...";
                 this.uploadedVideoData = await uploadVideo(
-                    "testOwner",
+                    this.userId, // Use actual user ID
                     this.videoType,
                     this.videoFile,
                     this.videoName,
                     this.selectedReferenceVideoId || null
                 );
                 this.statusMessage = "Upload successful!";
+
+                // Redirect to video library after successful upload
+                setTimeout(() => {
+                    this.$router.push('/videoLibrary');
+                }, 1500);
             } catch (error) {
                 console.error(error);
-                this.statusMessage = "Upload failed. Try again.";
+                if (error.message === 'Unauthorized') {
+                    this.statusMessage = "Please log in to upload videos.";
+                    this.$router.push('/login');
+                } else {
+                    this.statusMessage = "Upload failed. Try again.";
+                }
             }
         },
     },
@@ -129,7 +148,7 @@ export default {
 
 .title {
     color: #3abdf8;
-    font-size:  38px;
+    font-size: 38px;
     font-weight: bold;
     align-self: flex-start;
     /* left-align heading */
@@ -159,12 +178,12 @@ export default {
 label {
     font-weight: 600;
     margin-bottom: 6px;
-    border-radius: 50px;
     color: #333;
 }
 
 input[type="text"],
-select {    border-radius: 5px;
+select {
+    border-radius: 5px;
     padding: 10px;
     border: 1px solid #ccc;
     font-size: 15px;
@@ -172,7 +191,10 @@ select {    border-radius: 5px;
 }
 
 input[type="text"]:focus,
-select:focus {
+select:focus,
+.file-label:hover,
+input[type="text"]:hover,
+select:hover {
     border-color: #3abdf8;
     outline: none;
     box-shadow: none;

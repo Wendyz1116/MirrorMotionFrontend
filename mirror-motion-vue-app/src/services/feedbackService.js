@@ -81,7 +81,11 @@ export const findFeedback = async (referenceVideoId, practiceVideoId) => {
 };
 
 /** Given a reference video and practice video, generate feedback */
-export const generateFeedback = async (referenceVideo, practiceVideo) => {
+export const generateFeedback = async (
+  referenceVideo,
+  practiceVideo,
+  userId
+) => {
   console.log("generateFeedback in feedback service called with:", {
     referenceVideo,
     practiceVideo,
@@ -107,7 +111,7 @@ export const generateFeedback = async (referenceVideo, practiceVideo) => {
       matchingFrames.referenceEndFrame,
       matchingFrames.practiceStartFrame,
       matchingFrames.practiceEndFrame,
-      "testOwner"
+      userId
     );
   }
 
@@ -146,7 +150,7 @@ export const generateFeedback = async (referenceVideo, practiceVideo) => {
 
     console.log("Storing extracted pose data to referenceVideo.");
     // Store it in database
-    await addPosesToVideo(referenceVideo.videoId, refPoseData, "testOwner");
+    await addPosesToVideo(referenceVideo.videoId, refPoseData, userId);
   }
 
   console.log("refPoseData:", refPoseData);
@@ -162,7 +166,7 @@ export const generateFeedback = async (referenceVideo, practiceVideo) => {
       practiceStartFrame,
       practiceEndFrame
     );
-    await addPosesToVideo(practiceVideo.videoId, pracPoseData, "testOwner");
+    await addPosesToVideo(practiceVideo.videoId, pracPoseData, userId);
   }
   // Get practice video poses
   // Assume we don't have it because if we do, we should have feedback already
@@ -174,8 +178,6 @@ export const generateFeedback = async (referenceVideo, practiceVideo) => {
   // );
   // await addPosesToVideo(practiceVideo.videoId, pracPoseData, "testOwner");
 
-  console.log("generateFeedback completed.");
-
   // Generate accuracy and feedback
   const feedback = await generateAccurcyAndComments(
     referenceVideo,
@@ -185,14 +187,9 @@ export const generateFeedback = async (referenceVideo, practiceVideo) => {
   );
   console.log("Generated feedback:", feedback);
 
-  await storeFeedback(practiceVideo.videoId, feedback.feedback, "testOwner");
+  await storeFeedback(practiceVideo.videoId, feedback.feedback, userId);
 
-  console.log("Feedback stored.");
-  await retrieveVideo(practiceVideo.videoId, "testOwner");
-  console.log(
-    "Practice video retrieved after storing feedback.",
-    practiceVideo
-  );
+  await retrieveVideo(practiceVideo.videoId, userId);
 
   // Return complete feedback object
   return {
@@ -200,18 +197,21 @@ export const generateFeedback = async (referenceVideo, practiceVideo) => {
   };
 };
 
+/**
+ * Generates accuracy and feedback for a given practice video compared to a reference video.
+ *
+ * @param {Object} referenceVideo - Reference video object.
+ * @param {Object} practiceVideo - Practice video object.
+ * @param {Object[]} refPoseData - Reference video poses.
+ * @param {Object[]} pracPoseData - Practice video poses.
+ * @returns {Promise<Object>} - Object containing generated accuracy and feedback.
+ */
 const generateAccurcyAndComments = async (
   referenceVideo,
   practiceVideo,
   refPoseData,
   pracPoseData
 ) => {
-  console.log("generateAccurcyAndComments called with:", {
-    referenceVideo,
-    practiceVideo,
-    refPoseData,
-    pracPoseData,
-  });
   const formData = new FormData();
   formData.append("referenceVideoId", referenceVideo.videoId);
   formData.append("practiceVideoId", practiceVideo.videoId);

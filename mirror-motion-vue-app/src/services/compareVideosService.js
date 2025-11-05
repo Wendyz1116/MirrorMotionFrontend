@@ -1,3 +1,10 @@
+/**
+ * Computes an envelope from a given array of samples
+ * @param {number[]} samples the array of samples
+ * @param {number} sampleRate the sample rate of the samples array
+ * @param {number} [frameWindowMs=50] the frame window in ms
+ * @returns {number[]} an array of envelope values, one per frame
+ */
 function computeEnvelopeFromSamples(samples, sampleRate, frameWindowMs = 50) {
   const frameLen = Math.max(1, Math.floor((sampleRate * frameWindowMs) / 1000));
   const frames = Math.max(1, Math.floor(samples.length / frameLen));
@@ -42,6 +49,11 @@ function crossCorrelate(a, b, maxLagFrames) {
   return best;
 }
 
+/**
+ * Retrieves audio data from a given URL.
+ * @param {string} url the URL of the audio file
+ * @returns {Promise<{samples: number[], sampleRate: number, duration: number}>} a promise resolving to an object containing the audio samples, sample rate, and duration
+ */
 async function getAudioData(url) {
   const response = await fetch(url);
   const arrayBuffer = await response.arrayBuffer();

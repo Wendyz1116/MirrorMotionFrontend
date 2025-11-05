@@ -1,28 +1,34 @@
-import { createRouter, createWebHistory } from 'vue-router';
-import UploadVideo from '../pages/UploadVideo.vue';
-import VideoLibrary from '../pages/VideoLibrary.vue';
-import PracticeLibrary from '@/pages/PracticeLibrary.vue';
+import { createRouter, createWebHistory } from "vue-router";
+import UploadVideo from "../pages/UploadVideo.vue";
+import VideoLibrary from "../pages/VideoLibrary.vue";
+import PracticeLibrary from "@/pages/PracticeLibrary.vue";
+import AuthPage from "@/pages/AuthPage.vue";
 
 const routes = [
   {
-    path: '/',
-    redirect: '/uploadVideo', // default route
+    path: "/",
+    redirect: "/uploadVideo", // default route
   },
   {
-    path: '/uploadVideo',
-    name: 'UploadVideo',
+    path: "/uploadVideo",
+    name: "UploadVideo",
     component: UploadVideo,
   },
   {
-    path: '/videoLibrary',
-    name: 'VideoLibrary',
+    path: "/videoLibrary",
+    name: "VideoLibrary",
     component: VideoLibrary,
   },
   {
-    path: '/practice-library',
-    name: 'PracticeLibrary',
+    path: "/practice-library",
+    name: "PracticeLibrary",
     component: PracticeLibrary,
     // we will read the reference video from sessionStorage / query inside the component
+  },
+  {
+    path: "/login",
+    name: "Login",
+    component: AuthPage,
   },
 ];
 

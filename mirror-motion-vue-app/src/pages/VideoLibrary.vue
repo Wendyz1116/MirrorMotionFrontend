@@ -47,55 +47,57 @@ import { createBlobUrlFromRemote } from '@/services/poseBreakdownService';
 
 export default {
   name: "ManageVideos",
-  props: {
-    ownerProp: { type: String, default: null },
-  },
   data() {
     return {
-      owner: this.ownerProp || "testOwner",
       videos: [],
       loading: false,
       error: null,
       selectedVideo: null,
       blobUrls: [], // to track and clean up
+      userId: null,
     };
   },
-  watch: {
-    ownerProp(newVal) {
-      if (newVal) {
-        this.owner = newVal;
-        this.loadVideos();
-      }
-    },
+  created() {
+    // Check for logged in user
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      this.$router.push('/login');
+      return;
+    }
+    this.userId = userId;
+    this.loadVideos();
   },
   methods: {
     async loadVideos() {
-      if (!this.owner) return;
+      if (!this.userId) return;
       this.loading = true;
       this.error = null;
 
       try {
-        const data = await getAllReferenceVideos(this.owner);
+        const data = await getAllReferenceVideos(this.userId);
         this.videos = Array.isArray(data) ? data : [];
 
         console.log("Loaded videos:", this.videos);
 
         // fetch blob URLs for thumbnails
         for (const v of this.videos) {
-          console.log("video:", v);
           if (v._id) {
             try {
               const blobUrl = await createBlobUrlFromRemote(v._id);
               v.localBlobUrl = blobUrl;
               this.blobUrls.push(blobUrl);
+              console.log("blobUrl for video", v._id, ":", blobUrl);
             } catch (err) {
               console.warn(`Failed to load video blob for ${v._id}:`, err);
             }
           }
-          console.log("new video:", v);
         }
       } catch (err) {
-        this.error = err.message || "Failed to load videos";
+        if (err.message === 'Unauthorized') {
+          this.$router.push('/login');
+        } else {
+          this.error = err.message || "Failed to load videos";
+        }
       } finally {
         this.loading = false;
       }
@@ -226,7 +228,7 @@ export default {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 6px;  
+  border-radius: 6px;
   background-color: #ccc;
 }
 

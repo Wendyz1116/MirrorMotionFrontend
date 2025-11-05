@@ -52,8 +52,17 @@ export default {
     return {
       video: undefined, // null = no selection, object = VideoDoc
       feedback: null,
-      isLoading: false,
+      isLoading: false, userId: null,
+
     };
+  },
+  created() {
+    // Get userId from localStorage
+    this.userId = localStorage.getItem('userId');
+    if (!this.userId) {
+      console.error('No user ID found');
+      this.$router.push('/login');
+    }
   },
   computed: {
     // Compute the SVG arc path for the gauge based on accuracy value
@@ -90,20 +99,26 @@ export default {
   },
   methods: {
     async loadVideoDoc(id) {
+      if (!this.userId) return;
+
       this.isLoading = true;
       this.video = undefined;
       this.feedback = null;
       try {
-        this.video = await retrieveVideo(id, "testOwner");
+        this.video = await retrieveVideo(id, this.userId);
         if (this.video && this.video.feedback) {
           await this.loadFeedback(this.video.feedback);
         }
       } catch (err) {
         console.error(err);
+        if (err.message === 'Unauthorized') {
+          this.$router.push('/login');
+        }
       } finally {
         this.isLoading = false;
       }
     },
+
 
     async loadFeedback(id) {
       this.isLoading = true;
@@ -119,26 +134,27 @@ export default {
     },
 
     async onGenerateFeedback() {
-      console.log("onGenerateFeedback called with:", this.video);
-      if (!this.video) return;
+      if (!this.video || !this.userId) return;
 
       this.isLoading = true;
       try {
-        // Get reference video
-        const referenceVideo = await retrieveVideo(this.video.referenceVideoId, "testOwner");
+        // Get reference video with user authentication
+        const referenceVideo = await retrieveVideo(this.video.referenceVideoId, this.userId);
 
-        // Generate feedback - this will store it in backend
-        const generatedFeedback = await generateFeedback(referenceVideo, this.video);
+        // Generate feedback
+        const generatedFeedback = await generateFeedback(referenceVideo, this.video, this.userId);
 
-        // Load the full feedback details
+        // Load the feedback
         await this.loadFeedback(generatedFeedback.feedbackId);
-
       } catch (err) {
         console.error("Error generating feedback:", err);
+        if (err.message === 'Unauthorized') {
+          this.$router.push('/login');
+        }
       } finally {
         this.isLoading = false;
       }
-    }
+    },
   }
 };
 </script>

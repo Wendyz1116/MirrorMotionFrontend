@@ -50,14 +50,59 @@ async function initPoseLandmarker() {
  * Caller should revoke the URL when done.
  */
 export async function createBlobUrlFromRemote(currUrl) {
-  const remoteUrl = `http://localhost:8000/api/ManageVideo/${currUrl}`;
+  const userId = localStorage.getItem("userId");
+  const remoteUrl = `http://localhost:8000/api/ManageVideo/${currUrl}/${userId}`;
   const resp = await fetch(remoteUrl, { mode: "cors" });
   if (!resp.ok) throw new Error(`Failed to fetch video (${resp.status})`);
   const blob = await resp.blob();
-  // console.log("created blob url:", URL.createObjectURL(blob));
   return URL.createObjectURL(blob);
 }
 
+
+// export async function createBlobUrlFromRemote(videoId) {
+//   const userId = localStorage.getItem("userId");
+//   if (!userId) {
+//     throw new Error("Unauthorized - Please log in");
+//   }
+
+//   const remoteUrl = `http://localhost:8000/api/ManageVideo/${videoId}`;
+//   const formData = new FormData();
+//   formData.append("caller", userId);
+//   formData.append("videoId", videoId);
+
+//   try {
+//     const resp = await fetch(remoteUrl, {
+//       method: "POST",
+//       mode: "cors",
+//       body: formData
+//     });
+
+//     if (!resp.ok) {
+//       if (resp.status === 401) {
+//         throw new Error("Unauthorized");
+//       }
+//       throw new Error(`Failed to fetch video (${resp.status})`);
+//     }
+
+//     // Check if we got video data
+//     const contentType = resp.headers.get('Content-Type');
+//     if (!contentType || !contentType.includes('video/')) {
+//       console.warn('Unexpected content type:', contentType);
+//     }
+
+//     const blob = await resp.blob();
+//     if (blob.size === 0) {
+//       throw new Error('Received empty video data');
+//     }
+
+//     const blobUrl = URL.createObjectURL(blob);
+//     console.log("Created blob URL:", blobUrl);
+//     return blobUrl;
+//   } catch (error) {
+//     console.error("Error fetching video:", error);
+//     throw error;
+//   }
+// }
 /**
  * Extract landmarks from a video element, sampling at specified intervals.
  * @param {HTMLVideoElement} video - Video element to process
