@@ -1,58 +1,86 @@
 # Mirror Motion Vue App
 
 ## Overview
-The Mirror Motion Vue App is a frontend application that allows users to upload a video and extract pose landmarks from it. The extracted pose data is then displayed visually on the screen.
+Mirror Motion is a dance practice application that helps users improve their dance moves through video comparison and pose analysis. Users can upload reference dance videos and practice attempts, then receive automated feedback on their performance through pose matching and synchronized playback.
+
+## Features
+- User authentication (login/signup)
+- Video upload and categorization (reference/practice)
+- Video library management
+- Automated pose analysis and comparison
+- Synchronized video playback with pose overlays
+- Performance feedback with accuracy scores
+- Timestamp-specific improvement suggestions
 
 ## Project Structure
 ```
 mirror-motion-vue-app
 ├── public
-│   └── index.html          # Main HTML file for the application
+│   └── index.html          # Main HTML file
 ├── src
-│   ├── App.vue            # Root component of the Vue application
-│   ├── main.js            # Entry point for the Vue application
+│   ├── App.vue            # Root component
+│   ├── main.js            # Application entry point
 │   ├── components
-│   │   ├── HelloWorld.vue  # Component displaying a welcome message
-│   │   ├── VideoUploader.vue # Component for uploading videos
-│   │   └── PoseCanvas.vue  # Component for displaying pose landmarks
+│   │   ├── GeneralFeedbackBox.vue  # Feedback display component
+│   │   └── ... 
+│   ├── pages
+│   │   ├── AuthPage.vue           # Login/Signup page
+│   │   ├── UploadVideo.vue        # Video upload page
+│   │   ├── VideoLibrary.vue       # Video management page
+│   │   └── PracticeLibrary.vue    # Practice video comparison
 │   ├── services
-│   │   └── poseService.js  # Functions for API interactions
-│   ├── utils
-│   │   └── videoUtils.js   # Utility functions for video processing
-│   └── assets              # Directory for static assets
-├── package.json            # npm configuration file
-├── vue.config.js           # Vue CLI configuration settings
-├── .eslintrc.js           # ESLint configuration file
-└── README.md               # Documentation for the project
+│   │   ├── userService.js         # Authentication API
+│   │   ├── manageVideosService.js # Video management API
+│   │   ├── poseBreakdownService.js # Pose analysis
+│   │   └── feedbackService.js     # Feedback generation
+│   ├── router
+│   │   └── index.js              # Route configurations
+│   ├── styles
+│   │   └── generalStyle.css      # Global styles
+│   └── assets                    # Static assets
+├── package.json
+└── README.md
 ```
 
 ## Setup Instructions
 1. **Clone the repository:**
-   ```
+   ```bash
    git clone <repository-url>
    cd mirror-motion-vue-app
    ```
 
 2. **Install dependencies:**
-   ```
+   ```bash
    npm install
    ```
 
-3. **Run the application:**
-   ```
+3. **Run the development server:**
+   ```bash
    npm run serve
    ```
 
-4. **Open your browser:**
-   Navigate to `http://localhost:8080` to view the application.
+4. **Access the application:**
+   Navigate to `http://localhost:8080`
 
-## Usage
-- Use the **Video Uploader** component to select and upload a video file.
-- The application will process the video and extract pose landmarks.
-- The **Pose Canvas** component will display the extracted pose landmarks visually.
+## User Journey
+1. Log in or create a new account
+2. Upload reference dance videos
+3. Upload practice attempts
+4. View reference videos in the library
+5. Generate feedback for each practice videos
+6. Compare synchronized playback
+7. Track improvements over time
 
-## Contributing
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
+## Technologies
+- Vue.js 3
+- Vue Router
+- MediaPipe Pose Detection
+- HTML5 Video API
+- Local Storage for Auth
 
-## License
-This project is licensed under the MIT License.
+## Backend Integration
+The frontend connects to a backend server running on `localhost:8000` that handles:
+- User authentication
+- Video storage and retrieval
+- Pose data processing
+- Feedback generation
