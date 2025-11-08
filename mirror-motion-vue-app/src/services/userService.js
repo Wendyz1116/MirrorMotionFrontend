@@ -2,39 +2,42 @@ const API_URL = "http://localhost:8000/api";
 
 export const userService = {
   async login(username, password) {
-    const formData = new FormData();
-    formData.append("username", username);
-    formData.append("password", password);
+    const payload = { username, password };
 
     const response = await fetch(`${API_URL}/User/login`, {
       method: "POST",
-      body: formData,
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Login failed");
-    }
+    if (data.error) throw new Error(data.error);
     return data;
   },
 
   async register(username, password) {
-    console.log(username, password);
-    const formData = new FormData();
-    formData.append("username", username);
-    formData.append("password", password);
+    const payload = { username, password };
 
     const response = await fetch(`${API_URL}/User/register`, {
       method: "POST",
-
-      body: formData,
+      body: JSON.stringify(payload),
     });
 
-    console.log("register response:", response);
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Registration failed");
-    }
+    if (data.error) throw new Error(data.error);
+    return data;
+  },
+
+  async logout(session) {
+    const payload = { session };
+
+    console.log("Logging out with session:", session, `${API_URL}/logout`);
+    const response = await fetch(`${API_URL}/logout`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
     return data;
   },
 };

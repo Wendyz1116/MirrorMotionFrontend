@@ -6,18 +6,6 @@
       <button class="use-as-ref-btn" :disabled="!selectedVideo" @click="useAsReference">Use as reference</button>
     </div>
 
-    <!-- <div class="controls">
-      <label>
-        Owner id:
-        <input v-model="owner" placeholder="enter owner id (User)" />
-      </label>
-      <button @click="loadVideos" :disabled="!owner">Load Library</button>
-      <button v-if="videos.length" @click="refresh">Refresh</button>
-    </div> -->
-
-    <!-- <div v-if="loading" class="status">Loading all videos…</div> -->
-    <!-- <div v-if="error" class="status error">{{ error }}</div> -->
-
     <div v-if="!loading && videos.length === 0" class="empty">
       No videos found for this owner.
     </div>
@@ -26,7 +14,7 @@
       <div class="card" v-for="(v, idx) in videos" :key="v._id"
         :class="{ selected: selectedVideo && selectedVideo._id === v._id }" @click="selectVideo(v)">
         <div class="video-wrap">
-          <video v-if="v.localBlobUrl" :src="v.localBlobUrl" crossorigin="anonymous" playsinline
+          <video v-if="v.localVideoUrl" :src="v.localVideoUrl" crossorigin="anonymous" playsinline
             preload="metadata"></video>
           <div v-else class="placeholder">Loading preview...</div>
         </div>
@@ -42,8 +30,7 @@
 </template>
 
 <script>
-import { getAllReferenceVideos, getOwnedVideos } from '@/services/manageVideosService';
-import { createBlobUrlFromRemote } from '@/services/poseBreakdownService';
+import { getAllReferenceVideos, streamVideo } from '@/services/manageVideosService';
 
 export default {
   name: "ManageVideos",
@@ -53,40 +40,42 @@ export default {
       loading: false,
       error: null,
       selectedVideo: null,
-      blobUrls: [], // to track and clean up
-      userId: null,
+      videoUrls: [], // to track and clean up
+      session: null,
     };
   },
   created() {
+    console.log("in video library");
     // Check for logged in user
-    const userId = localStorage.getItem('userId');
-    if (!userId) {
+    const session = localStorage.getItem('session');
+    console.log("session:", session);
+    if (!session) {
       this.$router.push('/login');
       return;
     }
-    this.userId = userId;
+    this.session = session;
     this.loadVideos();
   },
   methods: {
     async loadVideos() {
-      if (!this.userId) return;
+      if (!this.session) return;
       this.loading = true;
       this.error = null;
 
       try {
-        const data = await getAllReferenceVideos(this.userId);
+        const data = await getAllReferenceVideos(this.session);
         this.videos = Array.isArray(data) ? data : [];
 
         console.log("Loaded videos:", this.videos);
 
-        // fetch blob URLs for thumbnails
+        // fetch video URLs for thumbnails
         for (const v of this.videos) {
           if (v._id) {
             try {
-              const blobUrl = await createBlobUrlFromRemote(v._id);
-              v.localBlobUrl = blobUrl;
-              this.blobUrls.push(blobUrl);
-              console.log("blobUrl for video", v._id, ":", blobUrl);
+              const videoUrl = await streamVideo(this.session, v._id);
+              v.localVideoUrl = videoUrl;
+              this.videoUrls.push(videoUrl);
+              console.log("videoUrl for video", v._id, ":", videoUrl);
             } catch (err) {
               console.warn(`Failed to load video blob for ${v._id}:`, err);
             }
@@ -103,7 +92,7 @@ export default {
       }
     },
     refresh() {
-      this.revokeBlobUrls();
+      this.revokeVideoUrls();
       this.loadVideos();
     },
     selectVideo(video) {
@@ -117,18 +106,18 @@ export default {
       // navigate to practice library route and include ref id as query param
       this.$router.push({ name: 'PracticeLibrary', query: { refId: this.selectedVideo._id } });
     },
-    revokeBlobUrls() {
-      for (const url of this.blobUrls) {
+    revokeVideoUrls() {
+      for (const url of this.videoUrls) {
         URL.revokeObjectURL(url);
       }
-      this.blobUrls = [];
+      this.videoUrls = [];
     },
   },
   mounted() {
     if (this.owner) this.loadVideos();
   },
   beforeUnmount() {
-    this.revokeBlobUrls();
+    this.revokeVideoUrls();
   },
 };
 </script>

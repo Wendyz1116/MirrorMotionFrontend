@@ -7,6 +7,8 @@ import {
 } from "./manageVideosService";
 import { extractRawLandmarksFromVideoUrl } from "./poseBreakdownService";
 
+const BASE_URL = "http://localhost:8000/api";
+
 /** API to retrieve feedback
  * POST /api/Feedback/getFeedback
  *
@@ -15,27 +17,19 @@ import { extractRawLandmarksFromVideoUrl } from "./poseBreakdownService";
  */
 export const getFeedback = async (feedbackId) => {
   console.log("getFeedback called with:", { feedbackId });
-  const formData = new FormData();
-  formData.append("feedback", feedbackId);
 
-  console.log("FormData prepared:");
-  for (const [key, value] of formData.entries()) {
-    console.log(key, value);
-  }
+  const payload = { feedback: feedbackId };
 
-  const response = await fetch(
-    "http://localhost:8000/api/Feedback/getFeedback",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
+  const response = await fetch(`${BASE_URL}/Feedback/getFeedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
   const data = await response.json();
 
-  // console.log(response, response.error);
   if (data.error) {
-    throw new Error(`Failed to retrieve feedback: ${response.error}`);
+    throw new Error(`Failed to retrieve feedback: ${data.error}`);
   }
 
   console.log("retrieve response:", data);
@@ -45,8 +39,8 @@ export const getFeedback = async (feedbackId) => {
 /** API to find feedback for a reference video and practice video
  * POST /api/Feedback/findFeedback
  *
- * @param {string} referenceVideoId - ID of the reference video to find feedback for
- * @param {string} practiceVideoId - ID of the practice video to find feedback for
+ * @param {string} referenceVideoId - ID of the reference video
+ * @param {string} practiceVideoId - ID of the practice video
  * @returns {object} - Feedback object with the feedbackId
  */
 export const findFeedback = async (referenceVideoId, practiceVideoId) => {
@@ -54,22 +48,14 @@ export const findFeedback = async (referenceVideoId, practiceVideoId) => {
     referenceVideoId,
     practiceVideoId,
   });
-  const formData = new FormData();
-  formData.append("referenceVideoId", referenceVideoId);
-  formData.append("practiceVideoId", practiceVideoId);
 
-  console.log("FormData prepared:");
-  for (const [key, value] of formData.entries()) {
-    console.log(key, value);
-  }
+  const payload = { referenceVideoId, practiceVideoId };
 
-  const response = await fetch(
-    "http://localhost:8000/api/Feedback/findFeedback",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
+  const response = await fetch(`${BASE_URL}/Feedback/findFeedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to retrieve feedback: ${response.statusText}`);
@@ -82,13 +68,16 @@ export const findFeedback = async (referenceVideoId, practiceVideoId) => {
 
 /** Given a reference video and practice video, generate feedback */
 export const generateFeedback = async (
+  session,
   referenceVideo,
   practiceVideo,
   userId
 ) => {
   console.log("generateFeedback in feedback service called with:", {
+    session,
     referenceVideo,
     practiceVideo,
+    userId,
   });
 
   let matchingFrames;
@@ -96,26 +85,27 @@ export const generateFeedback = async (
   // Use existing matching frames or compute new ones
   if (practiceVideo.matchingFrames) {
     console.log(
-      "Using existing matching frames from practiceVideo:",
+      "Using existing matching frames:",
       practiceVideo.matchingFrames
     );
     matchingFrames = practiceVideo.matchingFrames;
   } else {
-    // Get matching frames
-    matchingFrames = await getMatchingFrames(referenceVideo, practiceVideo);
+    matchingFrames = await getMatchingFrames(
+      session,
+      referenceVideo,
+      practiceVideo
+    );
 
-    // Save matching frames
     await setMatchingFrames(
-      practiceVideo.videoId,
+      session,
+      practiceVideo._id,
       matchingFrames.referenceStartFrame,
       matchingFrames.referenceEndFrame,
       matchingFrames.practiceStartFrame,
-      matchingFrames.practiceEndFrame,
-      userId
+      matchingFrames.practiceEndFrame
     );
   }
 
-  // Destructure the frames after ensuring we have them
   const {
     referenceStartFrame,
     referenceEndFrame,
@@ -123,60 +113,42 @@ export const generateFeedback = async (
     practiceEndFrame,
   } = matchingFrames;
 
-  // TODO: may want to change to 100 so every s have 10 frames
-  // Sample every 10ms
-  // So every s has 100 frames
-  // Sample every 100ms
-  // So every s has 10 frames
   const frameIntervalMs = 100;
 
   // Get reference video poses
   let refPoseData;
-
-  console.log("referenceVideo.poseData:", referenceVideo.poseData);
   if (referenceVideo.poseData && referenceVideo.poseData.length > 0) {
-    // Only get the frames from referenceStartFrame to referenceEndFrame
     console.log("Using existing pose data from referenceVideo.");
     refPoseData = referenceVideo.poseData.slice(
       referenceStartFrame,
       referenceEndFrame + 1
     );
   } else {
-    // If it doesn't exist, get all frames
     refPoseData = await extractRawLandmarksFromVideoUrl(
-      referenceVideo.videoId,
+      session,
+      referenceVideo._id,
       frameIntervalMs
     );
-
-    console.log("Storing extracted pose data to referenceVideo.");
-    // Store it in database
-    await addPosesToVideo(referenceVideo.videoId, refPoseData, userId);
+    await addPosesToVideo(session, referenceVideo._id, refPoseData);
   }
 
-  console.log("refPoseData:", refPoseData);
+  console.log("Reference pose data length:", refPoseData.length);
 
+  // Get practice video poses
   let pracPoseData;
   if (practiceVideo.poseData && practiceVideo.poseData.length > 0) {
     console.warn("Practice video already has pose data");
     pracPoseData = practiceVideo.poseData;
   } else {
     pracPoseData = await extractRawLandmarksFromVideoUrl(
-      practiceVideo.videoId,
+      session,
+      practiceVideo._id,
       frameIntervalMs,
       practiceStartFrame,
       practiceEndFrame
     );
-    await addPosesToVideo(practiceVideo.videoId, pracPoseData, userId);
+    await addPosesToVideo(session, practiceVideo._id, pracPoseData);
   }
-  // Get practice video poses
-  // Assume we don't have it because if we do, we should have feedback already
-  // const pracPoseData = await extractRawLandmarksFromVideoUrl(
-  //   practiceVideo.videoId,
-  //   frameIntervalMs,
-  //   practiceStartFrame,
-  //   practiceEndFrame
-  // );
-  // await addPosesToVideo(practiceVideo.videoId, pracPoseData, "testOwner");
 
   // Generate accuracy and feedback
   const feedback = await generateAccurcyAndComments(
@@ -185,16 +157,11 @@ export const generateFeedback = async (
     refPoseData,
     pracPoseData
   );
-  console.log("Generated feedback:", feedback);
 
-  await storeFeedback(practiceVideo.videoId, feedback.feedback, userId);
+  await storeFeedback(session, practiceVideo._id, feedback.feedback);
+  await retrieveVideo(session, practiceVideo._id);
 
-  await retrieveVideo(practiceVideo.videoId, userId);
-
-  // Return complete feedback object
-  return {
-    feedbackId: feedback.feedback,
-  };
+  return { feedbackId: feedback.feedback };
 };
 
 /**
@@ -212,15 +179,17 @@ const generateAccurcyAndComments = async (
   refPoseData,
   pracPoseData
 ) => {
-  const formData = new FormData();
-  formData.append("referenceVideoId", referenceVideo.videoId);
-  formData.append("practiceVideoId", practiceVideo.videoId);
-  formData.append("referencePoseData", JSON.stringify(refPoseData));
-  formData.append("practicePoseData", JSON.stringify(pracPoseData));
+  const payload = {
+    referenceVideoId: referenceVideo.videoId,
+    practiceVideoId: practiceVideo.videoId,
+    referencePoseData: refPoseData,
+    practicePoseData: pracPoseData,
+  };
 
-  const response = await fetch("http://localhost:8000/api/Feedback/analyze", {
+  const response = await fetch(`${BASE_URL}/Feedback/analyze`, {
     method: "POST",
-    body: formData,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

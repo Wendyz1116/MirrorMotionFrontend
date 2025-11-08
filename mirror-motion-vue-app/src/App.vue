@@ -35,6 +35,8 @@
 </template>
 
 <script>
+import { userService } from './services/userService';
+
 export default {
   name: "App",
   data() {
@@ -44,11 +46,12 @@ export default {
   },
   created() {
     // Check if user is logged in
-    this.isLoggedIn = !!localStorage.getItem('userId');
+    this.isLoggedIn = !!localStorage.getItem('session');
   },
   methods: {
     handleLogout() {
-      localStorage.removeItem('userId');
+      userService.logout(localStorage.getItem('session'));
+      localStorage.removeItem('session');
       this.isLoggedIn = false;
       this.$router.push('/login');
     }
@@ -56,7 +59,7 @@ export default {
   watch: {
     '$route': {
       handler() {
-        this.isLoggedIn = !!localStorage.getItem('userId');
+        this.isLoggedIn = !!localStorage.getItem('session');
       },
       immediate: true
     }

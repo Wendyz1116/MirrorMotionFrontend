@@ -59,11 +59,21 @@ export default {
                 );
 
                 this.message = this.isLogin ? 'Login successful!' : 'Registration successful!';
-                // Store user ID and redirect
-                localStorage.setItem('userId', result.userID);
-                this.$router.push('/videoLibrary');
+
+                // Check if just logging in or registering
+                // If logging in, store the session ID and redirect to video library
+                // else just redirect to login
+                if (this.isLogin) {
+                    localStorage.setItem('session', result.session);
+                    this.$router.push('/videoLibrary');
+                }
+                else {
+                    setTimeout(() => {
+                        this.message = '';
+                        this.isLogin = true;
+                    }, 500);
+                }
             } catch (error) {
-                console.log("username:", this.username, "password:", this.password);
                 if (this.isLogin) {
                     this.message = 'Could not find account';
                 } else {
@@ -162,7 +172,7 @@ button {
     color: #aed3e4;
 }
 
-.toggle-btn:hover {    
+.toggle-btn:hover {
     color: #3abdf8;
 }
 

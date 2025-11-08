@@ -52,15 +52,14 @@ export default {
     return {
       video: undefined, // null = no selection, object = VideoDoc
       feedback: null,
-      isLoading: false, userId: null,
-
+      isLoading: false,
+      session: null
     };
   },
   created() {
-    // Get userId from localStorage
-    this.userId = localStorage.getItem('userId');
-    if (!this.userId) {
-      console.error('No user ID found');
+    // Get session from localStorage
+    this.session = localStorage.getItem('session');
+    if (!this.session) {
       this.$router.push('/login');
     }
   },
@@ -99,13 +98,13 @@ export default {
   },
   methods: {
     async loadVideoDoc(id) {
-      if (!this.userId) return;
+      if (!this.session) return;
 
       this.isLoading = true;
       this.video = undefined;
       this.feedback = null;
       try {
-        this.video = await retrieveVideo(id, this.userId);
+        this.video = await retrieveVideo(this.session, id);
         if (this.video && this.video.feedback) {
           await this.loadFeedback(this.video.feedback);
         }
@@ -125,7 +124,6 @@ export default {
       this.feedback = null;
       try {
         this.feedback = await getFeedback(id);
-        console.log("Feedback loaded:", this.feedback);
       } catch (err) {
         console.error(err);
       } finally {
@@ -134,15 +132,16 @@ export default {
     },
 
     async onGenerateFeedback() {
-      if (!this.video || !this.userId) return;
+      console.log("generating feedback...");
+      if (!this.video || !this.session) return;
 
       this.isLoading = true;
       try {
         // Get reference video with user authentication
-        const referenceVideo = await retrieveVideo(this.video.referenceVideoId, this.userId);
+        const referenceVideo = await retrieveVideo(this.session, this.video.referenceVideoId);
 
         // Generate feedback
-        const generatedFeedback = await generateFeedback(referenceVideo, this.video, this.userId);
+        const generatedFeedback = await generateFeedback(this.session, referenceVideo, this.video, this.session);
 
         // Load the feedback
         await this.loadFeedback(generatedFeedback.feedbackId);

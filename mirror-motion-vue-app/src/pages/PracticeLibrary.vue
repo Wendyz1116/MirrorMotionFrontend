@@ -9,7 +9,7 @@
                     {{ currentReferenceVideo.videoName }}
                 </h3>
                 <div class="video-wrap">
-                    <video v-if="refBlobUrl" :src="refBlobUrl" controls crossorigin="anonymous" playsinline
+                    <video v-if="refVideoUrl" :src="refVideoUrl" controls crossorigin="anonymous" playsinline
                         preload="metadata" ref="refVideo"></video>
                     <div v-else class="placeholder">Loading reference video...</div>
                 </div>
@@ -21,7 +21,7 @@
 
                 <!-- When practice videos exist -->
                 <div v-if="!loading && practiceVideos.length > 0" class="form-group">
-                    <select id="practiceSelect" v-model.number="selectedPracticeIdx" @change="onPracticeChange">
+                    <select id="practiceSelect" v-model.number="selectedPracticeIdx">
                         <option v-for="(p, idx) in practiceVideos" :key="p._id" :value="idx">
                             {{ p.videoName || `Practice ${idx + 1}` }}
                         </option>
@@ -39,10 +39,10 @@
 
                 <!-- Selected practice video display -->
                 <div class="video-wrap">
-                    <video v-show="!loading && practiceVideos.length > 0 && practiceVideoBlobUrls[selectedPracticeIdx]"
-                        :src="practiceVideoBlobUrls[selectedPracticeIdx]" controls crossorigin="anonymous" playsinline
+                    <video v-show="!loading && practiceVideos.length > 0 && practiceVideoVideoUrls[selectedPracticeIdx]"
+                        :src="practiceVideoVideoUrls[selectedPracticeIdx]" controls crossorigin="anonymous" playsinline
                         preload="metadata" ref="practVideo" style="display: none"></video>
-                    <p v-show="(loading || !practiceVideoBlobUrls[selectedPracticeIdx]) && practiceVideos.length > 0"
+                    <p v-show="(loading || !practiceVideoVideoUrls[selectedPracticeIdx]) && practiceVideos.length > 0"
                         class="placeholder">
                         Loading practice videos...
                     </p>
@@ -67,7 +67,7 @@
 
 <script>
 import { getPracticeVideos, retrieveVideo, getMatchingFrames } from '@/services/manageVideosService';
-import { createBlobUrlFromRemote } from '@/services/poseBreakdownService';
+import { streamVideo } from '@/services/manageVideosService';
 import GeneralFeedbackBox from '@/components/GeneralFeedbackBox.vue';
 import { KEY_LANDMARKS } from '@/services/poseBreakdownService';
 
@@ -82,8 +82,8 @@ export default {
             currentReferenceVideo: null, // local reactive copy of referenceVideo
             practiceVideos: [],
             selectedPracticeIdx: 0, //TODO consider if ref vid have no practice vid
-            practiceVideoBlobUrls: [],
-            refBlobUrl: null,
+            practiceVideoVideoUrls: [],
+            refVideoUrl: null,
             loading: false,
             error: null,
             _refInitialized: false,
@@ -96,37 +96,40 @@ export default {
             practCanvas: null,
             lastRefFrameIndex: -1,
             lastPracFrameIndex: -1,
-            userId: null
+            session: null
         };
     },
     created() {
+        console.log('PracticeLibrary created', localStorage);
         // Check for logged in user
-        const userId = localStorage.getItem('userId');
-        if (!userId) {
+        const session = localStorage.getItem('session');
+        if (!session) {
             this.$router.push('/login');
             return;
         }
-        this.userId = userId;
+        this.session = session;
     },
     computed: {
         refUrl() {
             if (!this.currentReferenceVideo) return null;
-            return this.currentReferenceVideo.gcsUrl || this.refBlobUrl || null;
+            return this.currentReferenceVideo.gcsUrl || this.refVideoUrl || null;
         },
         selectedPracticeUrl() {
-            return this.selectedPractice?.localBlobUrl || this.selectedPractice?.gcsUrl || null;
+            return this.selectedPractice?.localVideoUrl || this.selectedPractice?.gcsUrl || null;
         },
         canPlayBoth() {
             // Check each condition
             const conditions = {
-                refBlobUrl: Boolean(this.refBlobUrl),
-                practiceUrl: Boolean(this.practiceVideoBlobUrls[this.selectedPracticeIdx]),
+                refVideoUrl: Boolean(this.refVideoUrl),
+                practiceUrl: Boolean(this.practiceVideoVideoUrls[this.selectedPracticeIdx]),
                 refVideo: Boolean(this.$refs.refVideo),
                 practVideo: Boolean(this.$refs.practVideo),
                 practiceVideosExist: this.practiceVideos.length > 0,
                 notLoading: !this.loading,
                 gotMatchingFrames: this.practiceVideos[this.selectedPracticeIdx]?.matchingFrames != null
             };
+
+            console.log("conditions for canPlayBoth:", conditions);
 
             return Object.values(conditions).every(condition => condition);
         }
@@ -147,7 +150,7 @@ export default {
         this.loading = true;
 
         // Check authentication
-        if (!this.userId) {
+        if (!this.session) {
             this.$router.push('/login');
             return;
         }
@@ -159,10 +162,9 @@ export default {
             const refVideoId = this.$route?.query?.refId;
             if (refVideoId) {
                 // Get reference video with user ID
-                const refVideo = await retrieveVideo(refVideoId, this.userId);
+                const refVideo = await retrieveVideo(this.session, refVideoId);
                 this.currentReferenceVideo = refVideo;
-                this.refBlobUrl = await createBlobUrlFromRemote(refVideo.videoId);
-
+                this.refVideoUrl = await streamVideo(this.session, refVideo._id);
                 this._refInitialized = true;
                 await this.loadPracticeVideos();
             }
@@ -178,14 +180,14 @@ export default {
     },
     methods: {
         async loadPracticeVideos() {
-            if (!this.userId) return;
+            if (!this.session) return;
 
             this.loading = true;
             try {
-                // Pass userId instead of owner
+                // Pass session instead of owner
                 this.practiceVideos = await getPracticeVideos(
-                    this.currentReferenceVideo.videoId,
-                    this.userId
+                    this.session,
+                    this.currentReferenceVideo._id
                 );
 
                 if (this.practiceVideos.length > 0) {
@@ -193,11 +195,11 @@ export default {
                     this.selectedPracticeIdx = 0;
 
                     // Clear existing blob URLs
-                    this.practiceVideoBlobUrls = [];
+                    this.practiceVideoVideoUrls = [];
 
                     for (const practiceVideo of this.practiceVideos) {
-                        const blobUrl = await createBlobUrlFromRemote(practiceVideo._id);
-                        this.practiceVideoBlobUrls.push(blobUrl);
+                        const videoUrl = await streamVideo(this.session, practiceVideo._id);
+                        this.practiceVideoVideoUrls.push(videoUrl);
                     }
                 }
             } catch (error) {
@@ -209,11 +211,6 @@ export default {
             } finally {
                 this.loading = false;
             }
-        },
-        
-        onPracticeChange() {
-            console.log("Selected index:", this.selectedPracticeIdx);
-
         },
 
         // In methods section
@@ -436,10 +433,10 @@ export default {
 
     },
     beforeUnmount() {
-        for (const url of this.practiceVideoBlobUrls) URL.revokeObjectURL(url);
-        if (this.refBlobUrl) URL.revokeObjectURL(this.refBlobUrl);
-        this.practiceVideoBlobUrls = [];
-        this.refBlobUrl = null;
+        for (const url of this.practiceVideoVideoUrls) URL.revokeObjectURL(url);
+        if (this.refVideoUrl) URL.revokeObjectURL(this.refVideoUrl);
+        this.practiceVideoVideoUrls = [];
+        this.refVideoUrl = null;
     },
 };
 </script>
@@ -610,7 +607,6 @@ p {
     background-color: #3abdf8;
 }
 
-/* placeholder matches aspect ratio so size doesn't change when media loads */
 .placeholder {
     color: #888;
     padding: 0;

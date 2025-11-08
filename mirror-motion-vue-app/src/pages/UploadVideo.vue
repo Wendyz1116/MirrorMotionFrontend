@@ -60,18 +60,18 @@ export default {
             statusMessage: "",
             referenceVideos: [], // holds fetched reference videos
             selectedReferenceVideoId: "", // selected reference for practice video
-            userId: null,
+            session: null,
         };
     },
     created() {
         // Check for logged in user when component is created
-        const userId = localStorage.getItem('userId');
-        if (!userId) {
+        const session = localStorage.getItem('session');
+        if (!session) {
             // Redirect to login if no user is logged in
             this.$router.push('/login');
             return;
         }
-        this.userId = userId;
+        this.session = session;
     },
     methods: {
         onFileChange(event) {
@@ -86,7 +86,7 @@ export default {
             if (this.videoType === "practice") {
                 try {
                     // Use actual user ID instead of hardcoded "testOwner"
-                    this.referenceVideos = await getAllReferenceVideos(this.userId);
+                    this.referenceVideos = await getAllReferenceVideos(this.session);
                     console.log("Loaded reference videos:", this.referenceVideos);
                 } catch (err) {
                     console.error("Failed to load reference videos:", err);
@@ -109,7 +109,7 @@ export default {
             try {
                 this.statusMessage = "Uploading...";
                 this.uploadedVideoData = await uploadVideo(
-                    this.userId, // Use actual user ID
+                    this.session,
                     this.videoType,
                     this.videoFile,
                     this.videoName,

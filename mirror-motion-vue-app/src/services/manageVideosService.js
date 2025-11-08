@@ -1,151 +1,75 @@
 import { computeAudioOffset } from "@/services/compareVideosService";
-import { createBlobUrlFromRemote } from "./poseBreakdownService";
+
+const BASE_URL = "http://localhost:8000/api";
+
+async function handleResponse(response, actionDescription) {
+  if (!response.ok) {
+    throw new Error(`Failed to ${actionDescription}: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ---------------------- Upload & Retrieve ----------------------
 
 export const uploadVideo = async (
-  owner,
+  session,
   videoType,
   file,
   videoName,
   referenceVideoId
 ) => {
+  const formData = new FormData();
   console.log("uploadVideo called with:", {
-    owner,
+    session,
     videoType,
     file,
     videoName,
     referenceVideoId,
   });
-  const formData = new FormData();
-  formData.append("owner", owner);
+  formData.append("session", session);
   formData.append("videoType", videoType);
   formData.append("file", file);
   formData.append("videoName", videoName);
   formData.append("referenceVideoId", referenceVideoId);
 
-  console.log("FormData prepared:");
-
-  for (const [key, value] of formData.entries()) {
-    console.log(key, value);
-  }
-
-  const response = await fetch("http://localhost:8000/api/ManageVideo/upload", {
+  const response = await fetch(`${BASE_URL}/ManageVideo/upload`, {
     method: "POST",
     body: formData,
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to upload video: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log("Upload response:", data);
+  const data = await handleResponse(response, "upload video");
   return data;
 };
 
-export const retrieveVideo = async (videoId, owner) => {
-  console.log("retrieveVideo called with:", { videoId, owner });
-  const formData = new FormData();
-  formData.append("video", videoId);
-  formData.append("caller", owner);
+/**
+ * Fetch a remote video URL and return a local blob URL.
+ * Caller should revoke the URL when done.
+ */
+export async function streamVideo(session, videoId) {
+  const payload = { session: session, video: videoId };
+  const resp = await fetch(`${BASE_URL}/ManageVideo/streamVideo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
-  console.log("FormData prepared:");
-  for (const [key, value] of formData.entries()) {
-    console.log(key, value);
-  }
+  if (!resp.ok) throw new Error(`Failed to fetch video (${resp.status})`);
+  const blob = await resp.blob();
+  return URL.createObjectURL(blob);
+}
 
-  const response = await fetch(
-    "http://localhost:8000/api/ManageVideo/retrieve",
-    {
+// ---------------------- Pose & Frame Management ----------------------
+export const addPosesToVideo = async (session, videoId, poseData) => {
+  try {
+    const payload = { session, video: videoId, poseData };
+
+    const response = await fetch(`${BASE_URL}/ManageVideo/addPosesToVideo`, {
       method: "POST",
-      body: formData,
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to retrieve video: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log("retrieve response:", data);
-  return data;
-};
-
-export const getPoseLandmarks = async (videoFile) => {
-  try {
-    const formData = new FormData();
-    if (videoFile instanceof File) {
-      formData.append("video", videoFile);
-    } else {
-      formData.append("videoUrl", videoFile);
-    }
-
-    const response = await fetch(
-      `http://localhost:8000/api/PoseBreakdown/extractPoses`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch pose landmarks");
-    }
-
-    const data = await response.json();
-    return data.poseLandmarks; // should match what backend returns
-  } catch (error) {
-    console.error("Error fetching pose landmarks:", error);
-    throw error;
-  }
-};
-
-export const addPosesToVideo = async (
-  videoId,
-  poseData,
-  caller,
-  startFrame = null,
-  endFrame = null
-) => {
-  try {
-    console.log("addPosesToVideo called with:", {
-      videoId,
-      caller,
-      poseData,
-      startFrame,
-      endFrame,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    const formData = new FormData();
-    formData.append("video", videoId);
-    formData.append("poseData", JSON.stringify(poseData));
-    formData.append("caller", caller);
-
-    // Only append start/end if they are provided (not null/undefined)
-    if (startFrame !== null && startFrame !== undefined) {
-      formData.append("startFrame", startFrame.toString());
-    }
-    if (endFrame !== null && endFrame !== undefined) {
-      formData.append("endFrame", endFrame.toString());
-    }
-
-    console.log(
-      "FormData prepared with optional frames:",
-      Array.from(formData.entries())
-    );
-
-    const response = await fetch(
-      `http://localhost:8000/api/ManageVideo/addPosesToVideo`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to add poses to video (status: ${response.status})`
-      );
-    }
+    await handleResponse(response, "add poses to video");
   } catch (error) {
     console.error("Error adding poses to video:", error);
     throw error;
@@ -153,163 +77,121 @@ export const addPosesToVideo = async (
 };
 
 export const setMatchingFrames = async (
+  session,
   videoId,
   referenceStartFrame,
   referenceEndFrame,
   practiceStartFrame,
-  practiceEndFrame,
-  caller
+  practiceEndFrame
 ) => {
   console.log("setMatchingFrames called with:", {
+    session,
     videoId,
     referenceStartFrame,
     referenceEndFrame,
     practiceStartFrame,
     practiceEndFrame,
-    caller,
   });
-  const formData = new FormData();
-  formData.append("video", videoId);
-  formData.append("referenceStartFrame", referenceStartFrame);
-  formData.append("referenceEndFrame", referenceEndFrame);
-  formData.append("practiceStartFrame", practiceStartFrame);
-  formData.append("practiceEndFrame", practiceEndFrame);
-  formData.append("caller", caller);
 
-  const response = await fetch(
-    "http://localhost:8000/api/ManageVideo/setMatchingFrames",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
+  const payload = {
+    session,
+    video: videoId,
+    referenceStartFrame,
+    referenceEndFrame,
+    practiceStartFrame,
+    practiceEndFrame,
+  };
 
-  if (!response.ok) {
-    throw new Error(`Failed to set matching frames: ${response.statusText}`);
-  }
+  console.log("Payload for setMatchingFrames:", payload);
+  const response = await fetch(`${BASE_URL}/ManageVideo/setMatchingFrames`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  await handleResponse(response, "set matching frames");
 };
 
-export const storeFeedback = async (videoId, feedbackId, caller) => {
-  const formData = new FormData();
-  formData.append("video", videoId);
-  formData.append("feedbackId", feedbackId);
-  formData.append("caller", caller);
+export const storeFeedback = async (session, videoId, feedbackId) => {
+  const payload = { session, video: videoId, feedbackId };
 
-  const response = await fetch(
-    "http://localhost:8000/api/ManageVideo/storeFeedback",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
+  const response = await fetch(`${BASE_URL}/ManageVideo/storeFeedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to store feedback: ${response.statusText}`);
-  }
+  await handleResponse(response, "store feedback");
 };
 
-// Query functions
-export const getOwnedVideos = async (owner) => {
-  console.log("getOwnedVideos called with:", { owner });
-  const formData = new FormData();
-  formData.append("owner", owner);
+// ---------------------- Query Functions ----------------------
+export const retrieveVideo = async (session, videoId) => {
+  const payload = { session, video: videoId };
+  console.log("retrieveVideo called with payload:", payload);
 
-  console.log("FormData prepared:");
-  for (const [key, value] of formData.entries()) {
-    console.log(key, value);
-  }
+  const response = await fetch(`${BASE_URL}/ManageVideo/_retrieve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  console.log("retrieve response object:", response);
 
-  const response = await fetch(
-    "http://localhost:8000/api/ManageVideo/getOwnedVideos",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
+  const data = await handleResponse(response, "retrieve video");
+  console.log("retrieveVideo response data:", data.result);
 
-  if (!response.ok) {
-    throw new Error(`Failed to retrieve video: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log("retrieve response:", data);
-  return data;
+  return data.result;
 };
 
-export const getPracticeVideos = async (referenceVideoId) => {
+export const getPracticeVideos = async (session, referenceVideoId) => {
   console.log("getPracticeVideos called with:", { referenceVideoId });
-  const formData = new FormData();
-  formData.append("referenceVideoId", referenceVideoId);
+  const payload = { session, referenceVideoId };
 
-  console.log("FormData prepared:");
-  for (const [key, value] of formData.entries()) {
-    console.log(key, value);
-  }
+  const response = await fetch(`${BASE_URL}/ManageVideo/_getPracticeVideos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await handleResponse(response, "get practice videos");
+  console.log("retrieve response:", data.results);
+  return data.results;
+};
+
+export const getAllReferenceVideos = async (session) => {
+  console.log("getAllReferenceVideos called with:", { session });
+  const payload = { session };
 
   const response = await fetch(
-    "http://localhost:8000/api/ManageVideo/getPracticeVideos",
+    `${BASE_URL}/ManageVideo/_getAllReferenceVideos`,
     {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     }
   );
 
-  if (!response.ok) {
-    throw new Error(`Failed to retrieve video: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log("retrieve response:", data);
-  return data;
+  const data = await handleResponse(response, "get all reference videos");
+  console.log("retrieve response:", data.results);
+  return data.results;
 };
 
-export const getAllReferenceVideos = async (caller) => {
-  console.log("getAllReferenceVideos called with:", { caller });
-  const formData = new FormData();
-  formData.append("caller", caller);
+// ---------------------- Matching Frames ----------------------
 
-  for (const [key, value] of formData.entries()) {
-    console.log(key, value);
-  }
-
-  const response = await fetch(
-    "http://localhost:8000/api/ManageVideo/getAllReferenceVideos",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to retrieve video: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log("retrieve response:", data);
-  return data;
-};
-
-/**
- * Action: Given a reference video and a practice video, return the matching start and end frames.
- * @param referenceVideo - The reference video element.
- * @param practiceVideo - The practice video element.
- * @returns A MatchingFrames object containing the matching start and end frames.
- */
-export const getMatchingFrames = async (referenceVideo, practiceVideo) => {
+export const getMatchingFrames = async (
+  session,
+  referenceVideo,
+  practiceVideo
+) => {
   try {
     console.log("getMatchingFrames called with:", {
+      session,
       referenceVideo,
       practiceVideo,
     });
 
-    const referenceVideoUrl = await createBlobUrlFromRemote(
-      referenceVideo.videoId
-    );
-    const practiceVideoUrl = await createBlobUrlFromRemote(
-      practiceVideo.videoId
-    );
+    const referenceVideoUrl = await streamVideo(session, referenceVideo._id);
+    const practiceVideoUrl = await streamVideo(session, practiceVideo._id);
 
-    // Compute the audio offset and
     const audioOffsetInfo2 = await computeAudioOffset(
       referenceVideoUrl,
       practiceVideoUrl
